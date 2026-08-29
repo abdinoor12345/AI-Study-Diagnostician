@@ -1,24 +1,32 @@
-// Scores a completed quiz against concepts, returning per-concept mastery,
-// the weakest concept, and the list of failed questions (for diagnosis).
-export function scoreQuiz(questions, userAnswers, concepts = []) {
-  const conceptStats = {};
-  concepts.forEach((c) => (conceptStats[c.name] = { correct: 0, total: 0 }));
+
+export function scoreQuiz(questions, userAnswers) {
+  const conceptStats = {}; // concept_id -> { name, correct, total }
 
   const failures = [];
+  const responses = [];
 
   questions.forEach((q) => {
-    const isCorrect = userAnswers[q.id] === q.answer;
-    if (!conceptStats[q.concept_name]) {
-      conceptStats[q.concept_name] = { correct: 0, total: 0 };
-    }
-    conceptStats[q.concept_name].total += 1;
+    const userAnswer = userAnswers[q.temp_id];
+    const isCorrect = userAnswer === q.answer;
 
-    if (isCorrect) {
-      conceptStats[q.concept_name].correct += 1;
-    } else {
+    if (!conceptStats[q.concept_id]) {
+      conceptStats[q.concept_id] = { name: q.concept_name, correct: 0, total: 0 };
+    }
+    conceptStats[q.concept_id].total += 1;
+    if (isCorrect) conceptStats[q.concept_id].correct += 1;
+
+    responses.push({
+      concept_id: q.concept_id,
+      question: q.question,
+      user_answer: userAnswer || null,
+      correct_answer: q.answer,
+      error_tag: q.error_tag,
+    });
+
+    if (!isCorrect) {
       failures.push({
         question: q.question,
-        user_answer: userAnswers[q.id] || "No Answer",
+        user_answer: userAnswer || "No Answer",
         correct_answer: q.answer,
         error_tag: q.error_tag,
       });
@@ -26,33 +34,37 @@ export function scoreQuiz(questions, userAnswers, concepts = []) {
   });
 
   const masteryScores = {};
+  const conceptNames = {};
   let lowestScore = 101;
-  let weakest = null;
+  let weakestId = null;
 
-  Object.keys(conceptStats).forEach((cName) => {
-    const stat = conceptStats[cName];
+  Object.entries(conceptStats).forEach(([cid, stat]) => {
     const score = stat.total > 0 ? Math.round((stat.correct / stat.total) * 100) : 0;
-    masteryScores[cName] = score;
+    masteryScores[cid] = score;
+    conceptNames[cid] = stat.name;
     if (score < lowestScore) {
       lowestScore = score;
-      weakest = cName;
+      weakestId = cid;
     }
   });
 
-  return { masteryScores, weakest, failures };
+  return {
+    masteryScores,
+    conceptNames,
+    weakestId,
+    weakestName: weakestId ? conceptNames[weakestId] : null,
+    failures,
+    responses,
+  };
 }
 
 export function scorePercent(questions, userAnswers) {
-  const correct = questions.filter((q) => userAnswers[q.id] === q.answer).length;
+  const correct = questions.filter((q) => userAnswers[q.temp_id] === q.answer).length;
   return Math.round((correct / questions.length) * 100);
 }
 
-// Overall score across ALL questions in a quiz, independent of per-concept
-// breakdown. Use this alongside masteryScores so a single wrong answer on a
-// concept with few questions (0% or 100% mastery) doesn't look like it
-// contradicts a decent overall performance.
 export function overallScore(questions, userAnswers) {
   if (!questions.length) return 0;
-  const correct = questions.filter((q) => userAnswers[q.id] === q.answer).length;
+  const correct = questions.filter((q) => userAnswers[q.temp_id] === q.answer).length;
   return Math.round((correct / questions.length) * 100);
 }

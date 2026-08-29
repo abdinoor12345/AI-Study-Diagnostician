@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { extractConcepts, generateQuiz, diagnoseWeakness } from '../utils/api';
+ import { useState } from 'react';
+import { extractConcepts, generateQuiz, submitQuiz, diagnoseWeakness } from '../utils/api';
 import { scoreQuiz, scorePercent, overallScore } from '../utils/mastery';
 
 export function useDiagnosticFlow() {
@@ -7,17 +7,23 @@ export function useDiagnosticFlow() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  const [documentId, setDocumentId] = useState(null);
   const [concepts, setConcepts] = useState([]);
   const [questions, setQuestions] = useState([]);
+  const [quizId, setQuizId] = useState(null);
   const [userAnswers, setUserAnswers] = useState({});
-  const [initialMastery, setInitialMastery] = useState({});
+
+  const [initialMastery, setInitialMastery] = useState({});   // concept_id -> score
+  const [conceptNames, setConceptNames] = useState({});       // concept_id -> name
   const [overallMastery, setOverallMastery] = useState(0);
-  const [weakestConcept, setWeakestConcept] = useState(null);
+  const [weakestConceptId, setWeakestConceptId] = useState(null);
   const [diagnosis, setDiagnosis] = useState(null);
   const [finalMastery, setFinalMastery] = useState({});
 
-  const handleAnswer = (questionId, option) => {
-    setUserAnswers((prev) => ({ ...prev, [questionId]: option }));
+  const weakestConcept = weakestConceptId ? conceptNames[weakestConceptId] : null;
+
+  const handleAnswer = (tempId, option) => {
+    setUserAnswers((prev) => ({ ...prev, [tempId]: option }));
   };
 
   const handleFileUpload = async (e) => {
@@ -28,13 +34,16 @@ export function useDiagnosticFlow() {
     setError(null);
     try {
       const extractData = await extractConcepts(file);
+      setDocumentId(extractData.document_id);
       setConcepts(extractData.concepts);
 
       const quizData = await generateQuiz({
+        documentId: extractData.document_id,
         concepts: extractData.concepts,
         quizType: 'diagnostic',
       });
       setQuestions(quizData.questions);
+      setQuizId(quizData.quiz_id);
       setUserAnswers({});
       setStep('quiz');
     } catch (err) {
@@ -45,15 +54,20 @@ export function useDiagnosticFlow() {
   };
 
   const handleDiagnosticSubmit = async () => {
-    const { masteryScores, weakest, failures } = scoreQuiz(questions, userAnswers, concepts);
+    const { masteryScores, conceptNames: names, weakestId, weakestName, failures, responses } =
+      scoreQuiz(questions, userAnswers);
+
     setInitialMastery(masteryScores);
-    setWeakestConcept(weakest);
+    setConceptNames((prev) => ({ ...prev, ...names }));
+    setWeakestConceptId(weakestId);
     setOverallMastery(overallScore(questions, userAnswers));
 
     setLoading(true);
     setError(null);
     try {
-      const diagData = await diagnoseWeakness({ weakConcept: weakest, recentFailures: failures });
+      await submitQuiz({ quizId, responses });
+
+      const diagData = await diagnoseWeakness({ weakConcept: weakestName, recentFailures: failures });
       setDiagnosis(diagData);
       setStep('diagnosis');
     } catch (err) {
@@ -70,11 +84,13 @@ export function useDiagnosticFlow() {
     setError(null);
     try {
       const quizData = await generateQuiz({
+        documentId,
         concepts,
         quizType: 'practice',
         targetConcept: weakestConcept,
       });
       setQuestions(quizData.questions);
+      setQuizId(quizData.quiz_id);
       setUserAnswers({});
       setStep('practice');
     } catch (err) {
@@ -84,22 +100,37 @@ export function useDiagnosticFlow() {
     }
   };
 
-  const handlePracticeSubmit = () => {
+  const handlePracticeSubmit = async () => {
+    const { responses } = scoreQuiz(questions, userAnswers);
     const practiceScore = scorePercent(questions, userAnswers);
+
     setFinalMastery({
       ...initialMastery,
-      [weakestConcept]: Math.max(initialMastery[weakestConcept], practiceScore),
+      [weakestConceptId]: Math.max(initialMastery[weakestConceptId] ?? 0, practiceScore),
     });
-    setStep('results');
+
+    setLoading(true);
+    setError(null);
+    try {
+      await submitQuiz({ quizId, responses });
+      setStep('results');
+    } catch (err) {
+      setError('Error saving practice results: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleRestart = () => {
+    setDocumentId(null);
     setConcepts([]);
     setQuestions([]);
+    setQuizId(null);
     setUserAnswers({});
     setInitialMastery({});
+    setConceptNames({});
     setOverallMastery(0);
-    setWeakestConcept(null);
+    setWeakestConceptId(null);
     setDiagnosis(null);
     setFinalMastery({});
     setError(null);
@@ -113,8 +144,9 @@ export function useDiagnosticFlow() {
 
   return {
     step, loading, error,
-    concepts, questions, userAnswers,
-    initialMastery, overallMastery, weakestConcept, diagnosis, finalMastery,
+    documentId, concepts, questions, userAnswers,
+    initialMastery, conceptNames, overallMastery, weakestConcept, weakestConceptId,
+    diagnosis, finalMastery,
     handleAnswer, handleFileUpload, handleDiagnosticSubmit,
     handleContinueToLesson, handleStartPractice, handlePracticeSubmit,
     handleRestart, handleBack,

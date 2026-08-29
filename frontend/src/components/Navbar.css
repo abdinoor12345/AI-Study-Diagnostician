@@ -1,0 +1,10 @@
+.navbar-links {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+}
+
+.navbar-link-active {
+  color: #1E293B !important;
+  font-weight: 700;
+}

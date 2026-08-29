@@ -2,46 +2,34 @@ import React from 'react';
 
 export default function QuestionList({ questions, userAnswers, onAnswer }) {
   return (
-    <div className="space-y-6">
+    <>
       {questions.map((q, idx) => (
         <div 
-          key={q.id} 
-          className="p-5 border border-slate-200 rounded-xl bg-white shadow-xs hover:border-slate-300 transition-colors"
+          key={q.temp_id} 
+          className="mb-5 p-4 border border-slate-200 rounded-lg bg-white"
         >
-          {/* Question Title */}
-          <p className="text-base font-semibold text-slate-800 mb-4">
-            <span className="text-blue-600 mr-1.5">Q{idx + 1}.</span> {q.question}
+          <p className="text-base text-slate-800 font-semibold mb-3">
+            Q{idx + 1}: {q.question}
           </p>
 
-          {/* Options Container */}
-          <div className="space-y-2.5">
-            {q.options.map((opt) => {
-              const isSelected = userAnswers[q.id] === opt;
-
-              return (
-                <label
-                  key={opt}
-                  className={`flex items-center gap-3 p-3.5 rounded-lg border text-sm font-medium cursor-pointer transition-all ${
-                    isSelected
-                      ? 'border-blue-600 bg-blue-50/60 text-blue-950 shadow-xs ring-1 ring-blue-600/20'
-                      : 'border-slate-200 bg-slate-50/50 text-slate-700 hover:bg-slate-100/80 hover:border-slate-300'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name={`q-${q.id}`}
-                    value={opt}
-                    checked={isSelected}
-                    onChange={() => onAnswer(q.id, opt)}
-                    className="w-4 h-4 text-blue-600 border-slate-300 focus:ring-blue-500 focus:ring-offset-0 cursor-pointer"
-                  />
-                  <span className="select-none flex-1">{opt}</span>
-                </label>
-              );
-            })}
-          </div>
+          {q.options.map((opt) => (
+            <label 
+              key={opt} 
+              className="block my-2 text-sm text-slate-700 font-medium cursor-pointer"
+            >
+              <input
+                type="radio"
+                name={`q-${q.temp_id}`}
+                value={opt}
+                checked={userAnswers[q.temp_id] === opt}
+                onChange={() => onAnswer(q.temp_id, opt)}
+                className="mr-2 text-blue-600 border-slate-300 focus:ring-blue-500"
+              /> 
+              {opt}
+            </label>
+          ))}
         </div>
       ))}
-    </div>
+    </>
   );
 }

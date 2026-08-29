@@ -1,13 +1,21 @@
 type DiagnosisStepProps = {
   weakestConcept: string | null;
+  weakestConceptId: string | null;
   initialMastery: Record<string, number>;
   overallMastery: number;
   diagnosis: Record<string, any> | null;
   onContinue: () => void;
 };
 
-export default function DiagnosisStep({ weakestConcept, initialMastery, overallMastery, diagnosis, onContinue }: DiagnosisStepProps) {
-  const mastery = weakestConcept ? initialMastery[weakestConcept] ?? 0 : 0;
+export default function DiagnosisStep({
+  weakestConcept,
+  weakestConceptId,
+  initialMastery,
+  overallMastery,
+  diagnosis,
+  onContinue,
+}: DiagnosisStepProps) {
+  const mastery = weakestConceptId ? initialMastery[weakestConceptId] ?? 0 : 0;
 
   return (
     <div>

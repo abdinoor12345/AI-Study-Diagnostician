@@ -1,6 +1,10 @@
-import React from 'react';
+ import React from 'react';
 
-export default function ResultsStep({ initialMastery = {}, finalMastery = {}, onRestart }) {
+export default function ResultsStep({ initialMastery = {}, finalMastery = {}, conceptNames, onRestart }) {
+  console.log('DEBUG conceptNames:', conceptNames);
+  console.log('DEBUG finalMastery:', finalMastery);
+  const conceptIds = Object.keys(finalMastery).filter((id) => id !== 'undefined' && id !== 'null');
+
   return (
     <div className="space-y-6">
       {/* Header Section */}
@@ -13,7 +17,7 @@ export default function ResultsStep({ initialMastery = {}, finalMastery = {}, on
         </p>
       </div>
 
-      {/* Responsive Table Card Container */}
+      {/* Table Card Container */}
       <div className="overflow-hidden border border-slate-200 rounded-xl shadow-xs bg-white">
         <table className="w-full text-left text-sm border-collapse">
           <thead>
@@ -25,25 +29,28 @@ export default function ResultsStep({ initialMastery = {}, finalMastery = {}, on
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
-            {Object.keys(finalMastery).map((cName) => {
-              const before = initialMastery[cName] ?? 0;
-              const after = finalMastery[cName] ?? 0;
-              const gain = after - before;
-
+            {conceptIds.map((cid) => {
+              const before = initialMastery[cid] ?? 0;
+              const after = finalMastery[cid] ?? 0;
+              const growth = after - before;
               return (
-                <tr key={cName} className="hover:bg-slate-50/50 transition-colors">
-                  <td className="p-4 font-medium text-slate-800">{cName}</td>
+                <tr key={cid} className="hover:bg-slate-50/50 transition-colors">
+                  <td className="p-4 font-medium text-slate-800">
+                    {conceptNames?.[cid] ?? 'Unknown Concept'}
+                  </td>
                   <td className="p-4 text-rose-600 font-medium">{before}%</td>
                   <td className="p-4 text-emerald-600 font-semibold">{after}%</td>
                   <td className="p-4 text-right">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                      gain > 0 
-                        ? 'bg-emerald-100 text-emerald-800' 
-                        : gain < 0 
-                        ? 'bg-rose-100 text-rose-800' 
-                        : 'bg-slate-100 text-slate-600'
-                    }`}>
-                      {gain > 0 ? `+${gain}%` : `${gain}%`}
+                    <span
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                        growth > 0
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : growth < 0
+                          ? 'bg-rose-100 text-rose-800'
+                          : 'bg-slate-100 text-slate-600'
+                      }`}
+                    >
+                      {growth > 0 ? `+${growth}%` : `${growth}%`}
                     </span>
                   </td>
                 </tr>
@@ -53,7 +60,7 @@ export default function ResultsStep({ initialMastery = {}, finalMastery = {}, on
         </table>
       </div>
 
-      {/* Action Footer */}
+      {/* Action Button */}
       <div className="pt-2 flex justify-end">
         <button
           onClick={onRestart}

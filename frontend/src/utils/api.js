@@ -19,14 +19,26 @@ export function extractConcepts(file) {
   });
 }
 
-export function generateQuiz({ concepts, quizType, targetConcept = null }) {
+export function generateQuiz({ documentId, concepts, quizType, targetConcept = null }) {
   return fetchJson(`${API_BASE}/generate-quiz`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
+      document_id: documentId,
       concepts,
       quiz_type: quizType,
       target_concept: targetConcept,
+    }),
+  });
+}
+
+export function submitQuiz({ quizId, responses }) {
+  return fetchJson(`${API_BASE}/submit-quiz`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      quiz_id: quizId,
+      responses,
     }),
   });
 }
@@ -40,4 +52,16 @@ export function diagnoseWeakness({ weakConcept, recentFailures }) {
       recent_failures: recentFailures,
     }),
   });
+}
+
+export function listDocuments() {
+  return fetchJson(`${API_BASE}/documents`);
+}
+
+export function getDocumentHistory(documentId) {
+  return fetchJson(`${API_BASE}/documents/${documentId}/history`);
+}
+
+export function getMasteryTrend(documentId) {
+  return fetchJson(`${API_BASE}/documents/${documentId}/mastery-trend`);
 }

@@ -11,14 +11,13 @@ import ResultsStep from './ResultsStep';
 
 export default function StepRenderer({ flow }) {
   const {
-    step, loading, error,
-    questions, userAnswers, weakestConcept,
-    initialMastery, diagnosis, finalMastery,
-    handleAnswer, handleFileUpload, handleDiagnosticSubmit,
-    handleContinueToLesson, handleStartPractice, handlePracticeSubmit,
-    handleRestart, handleBack,
-  } = flow;
-
+  step, loading, error,
+  questions, userAnswers, weakestConcept, weakestConceptId,
+  initialMastery, overallMastery, conceptNames, diagnosis, finalMastery,
+  handleAnswer, handleFileUpload, handleDiagnosticSubmit,
+  handleContinueToLesson, handleStartPractice, handlePracticeSubmit,
+  handleRestart, handleBack,
+} = flow;
   return (
     <>
       <StepNav currentStep={step} />
@@ -44,13 +43,14 @@ export default function StepRenderer({ flow }) {
       )}
 
       {!loading && step === 'diagnosis' && (
-       <DiagnosisStep
-  weakestConcept={weakestConcept}
-  initialMastery={initialMastery}
-  overallMastery={flow.overallMastery}  
-  diagnosis={diagnosis}
-  onContinue={handleContinueToLesson}
-/>
+      <DiagnosisStep
+    weakestConcept={weakestConcept}
+    weakestConceptId={weakestConceptId}
+    initialMastery={initialMastery}
+    overallMastery={overallMastery}
+    diagnosis={diagnosis}
+    onContinue={handleContinueToLesson}
+  />
       )}
 
       {!loading && step === 'lesson' && (
@@ -72,10 +72,11 @@ export default function StepRenderer({ flow }) {
 
       {!loading && step === 'results' && (
         <ResultsStep
-          initialMastery={initialMastery}
-          finalMastery={finalMastery}
-          onRestart={handleRestart}
-        />
+    initialMastery={initialMastery}
+    finalMastery={finalMastery}
+    conceptNames={conceptNames}
+    onRestart={handleRestart}
+  />
       )}
     </>
   );

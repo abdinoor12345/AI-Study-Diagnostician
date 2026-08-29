@@ -1,5 +1,6 @@
 import os
 import json
+import random
 import requests
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -8,6 +9,8 @@ from google import genai
 from google.genai import types
 from dotenv import load_dotenv
 
+from supabase_client import insert, select, update
+
 load_dotenv()
 
 app = Flask(__name__)
@@ -15,16 +18,6 @@ CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
 # Initialize Gemini Client
 gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-
-headers = {
-    "apikey": SUPABASE_KEY,
-    "Authorization": f"Bearer {SUPABASE_KEY}",
-    "Content-Type": "application/json",
-    "Prefer": "return=representation"
-}
 
 
 @app.route("/", methods=["GET"])
@@ -49,7 +42,7 @@ def extract_concepts():
 
         # 2. Extract concepts via Gemini
         prompt = f"""
-        Analyze the following study notes and extract the top 3-5 core concepts.
+        Analyze the following study notes and extract the top 2 core concepts only.
         Return STRICT JSON in this exact structure:
         {{
           "concepts": [
@@ -71,26 +64,15 @@ def extract_concepts():
         concepts_data = json.loads(response.text)
 
         # 3. Save Document entry in Supabase
-        doc_res = requests.post(
-            f"{SUPABASE_URL}/rest/v1/documents",
-            headers=headers,
-            json=[{"file_path": file.filename}]
-        )
-        doc_res.raise_for_status()
-        doc_id = doc_res.json()[0]["id"]
+        doc_res = insert("documents", [{"file_path": file.filename}])
+        doc_id = doc_res[0]["id"]  # uuid
 
         # 4. Save Concepts in Supabase
         concepts_to_insert = [
             {"document_id": doc_id, "name": c["name"], "description": c["description"]}
             for c in concepts_data["concepts"]
         ]
-        con_res = requests.post(
-            f"{SUPABASE_URL}/rest/v1/concepts",
-            headers=headers,
-            json=concepts_to_insert
-        )
-        con_res.raise_for_status()
-        saved_concepts = con_res.json()
+        saved_concepts = insert("concepts", concepts_to_insert)  # each row includes its uuid id + mastery_score default 0.0
 
         return jsonify({
             "document_id": doc_id,
@@ -106,16 +88,23 @@ def extract_concepts():
 
 
 # MVP Step 3: Generate Quiz (Diagnostic or Practice)
+# Saves the quiz row now; individual questions are only written to quiz_responses
+# once answered (that table requires user_answer + is_correct, so it can't hold
+# unanswered questions).
 @app.route("/generate-quiz", methods=["POST"])
 def generate_quiz():
     data = request.get_json()
-    concepts = data.get("concepts", [])
+    document_id = data.get("document_id")
+    concepts = data.get("concepts", [])  # [{id, name, description, mastery_score}, ...]
     quiz_type = data.get("quiz_type", "diagnostic")
     target_concept = data.get("target_concept", None)
 
     try:
+        concept_names = [c["name"] for c in concepts]
         prompt = f"""
-        Create a 5-question multiple-choice quiz based on these concepts: {json.dumps(concepts)}.
+        Create a multiple-choice quiz based on these concepts: {json.dumps(concept_names)}.
+        Generate a total of exactly 5 questions, split as evenly as possible across the
+        given concepts (e.g. for 2 concepts: 3 and 2).
         Type: {quiz_type}
         Target Concept (if practice): {target_concept}
 
@@ -123,7 +112,6 @@ def generate_quiz():
         {{
           "questions": [
             {{
-              "id": 1,
               "concept_name": "Concept Name",
               "question": "Question text...",
               "options": ["Option A", "Option B", "Option C", "Option D"],
@@ -141,10 +129,80 @@ def generate_quiz():
                 response_mime_type="application/json"
             )
         )
-        return jsonify(json.loads(response.text))
+        quiz_data = json.loads(response.text)
+
+        # Hard cap — never trust the model to obey "5 total" exactly
+        quiz_data["questions"] = quiz_data["questions"][:5]
+
+        # Shuffle each question's options so the correct answer isn't always
+        # in the same slot (Gemini tends to place it first otherwise).
+        # Scoring is unaffected since `answer` is matched by text, not position.
+        for q in quiz_data["questions"]:
+            random.shuffle(q["options"])
+
+        # Save the quiz record
+        quiz_row = insert("quizzes", [{
+            "document_id": document_id,
+            "quiz_type": quiz_type
+        }])
+        quiz_id = quiz_row[0]["id"]
+
+        # Attach concept_id + a frontend-local temp_id to each question
+        # (no DB id yet — that's assigned when the answer is submitted)
+        name_to_id = {c["name"]: c["id"] for c in concepts}
+        for idx, q in enumerate(quiz_data["questions"]):
+            q["temp_id"] = idx
+            q["concept_id"] = name_to_id.get(q["concept_name"])
+
+        quiz_data["quiz_id"] = quiz_id
+        return jsonify(quiz_data)
 
     except Exception as e:
         app.logger.exception("generate-quiz failed")
+        return jsonify({"error": str(e)}), 500
+
+
+# Submit quiz: writes each answered question to quiz_responses,
+# then updates mastery_score on each affected concept.
+@app.route("/submit-quiz", methods=["POST"])
+def submit_quiz():
+    data = request.get_json()
+    quiz_id = data.get("quiz_id")
+    responses = data.get("responses", [])
+    # responses: [{concept_id, question, user_answer, correct_answer, error_tag}]
+
+    try:
+        response_rows = [{
+            "quiz_id": quiz_id,
+            "concept_id": r["concept_id"],
+            "question": r["question"],
+            "user_answer": r["user_answer"] or "No Answer",
+            "is_correct": r["user_answer"] == r["correct_answer"],
+            "error_category": r.get("error_tag")
+        } for r in responses]
+
+        insert("quiz_responses", response_rows)
+
+        # Compute mastery per concept from this batch, write to concepts.mastery_score
+        concept_stats = {}
+        for r in response_rows:
+            cid = r["concept_id"]
+            if cid not in concept_stats:
+                concept_stats[cid] = {"correct": 0, "total": 0}
+            concept_stats[cid]["total"] += 1
+            if r["is_correct"]:
+                concept_stats[cid]["correct"] += 1
+
+        mastery_by_concept = {}
+        for cid, stat in concept_stats.items():
+            score = round((stat["correct"] / stat["total"]) * 100, 1) if stat["total"] else 0
+            mastery_by_concept[cid] = score
+            update("concepts", {"id": f"eq.{cid}"}, {"mastery_score": score})
+
+        return jsonify({"status": "saved", "mastery_by_concept": mastery_by_concept})
+
+    except Exception as e:
+        app.logger.exception("submit-quiz failed")
         return jsonify({"error": str(e)}), 500
 
 
@@ -182,6 +240,60 @@ def diagnose_weakness():
 
     except Exception as e:
         app.logger.exception("diagnose-weakness failed")
+        return jsonify({"error": str(e)}), 500
+
+
+# Retrieval
+@app.route("/documents", methods=["GET"])
+def list_documents():
+    try:
+        docs = select("documents", {"select": "*", "order": "created_at.desc"})
+        return jsonify(docs)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/documents/<document_id>/history", methods=["GET"])
+def document_history(document_id):
+    try:
+        concepts = select("concepts", {"document_id": f"eq.{document_id}"})
+        quizzes = select("quizzes", {"document_id": f"eq.{document_id}", "order": "created_at.asc"})
+        return jsonify({
+            "concepts": concepts,  # includes current mastery_score per concept
+            "quizzes": quizzes
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/documents/<document_id>/mastery-trend", methods=["GET"])
+def mastery_trend(document_id):
+    try:
+        concepts = select("concepts", {"document_id": f"eq.{document_id}"})
+        concept_ids = [c["id"] for c in concepts]
+        id_to_name = {c["id"]: c["name"] for c in concepts}
+
+        trend = {}
+        for cid in concept_ids:
+            responses = select("quiz_responses", {
+                "concept_id": f"eq.{cid}",
+                "order": "created_at.asc"
+            })
+            points = []
+            correct_so_far = 0
+            for i, r in enumerate(responses, start=1):
+                if r["is_correct"]:
+                    correct_so_far += 1
+                points.append({
+                    "attempt": i,
+                    "accuracy": round((correct_so_far / i) * 100, 1),
+                    "timestamp": r["created_at"]
+                })
+            trend[id_to_name[cid]] = points
+
+        return jsonify({"trend": trend, "concepts": concepts})
+    except Exception as e:
+        app.logger.exception("mastery-trend failed")
         return jsonify({"error": str(e)}), 500
 
 

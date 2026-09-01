@@ -1,3 +1,4 @@
+import { getDeviceId } from './deviceId';
 const API_BASE = "http://127.0.0.1:8000";
 
 // Wraps fetch: throws with the backend's error message if the response isn't OK
@@ -13,6 +14,7 @@ async function fetchJson(url, options) {
 export function extractConcepts(file) {
   const formData = new FormData();
   formData.append("file", file);
+  formData.append("device_id", getDeviceId());
   return fetchJson(`${API_BASE}/extract-concepts`, {
     method: "POST",
     body: formData,
@@ -55,9 +57,8 @@ export function diagnoseWeakness({ weakConcept, recentFailures }) {
 }
 
 export function listDocuments() {
-  return fetchJson(`${API_BASE}/documents`);
+  return fetchJson(`${API_BASE}/documents?device_id=${getDeviceId()}`);
 }
-
 export function getDocumentHistory(documentId) {
   return fetchJson(`${API_BASE}/documents/${documentId}/history`);
 }

@@ -20,14 +20,14 @@ export default function Dashboard({ onBack }) {
     setHistory(data);
   };
 
-  if (loading) return <p>Loading your progress...</p>;
+  if (loading) return <p className='p-5 text-red-500'>Loading your progress...</p>;
 
   return (
     <div>
       <button onClick={onBack} style={{ marginBottom: '16px', padding: '8px 16px', border: '1px solid #CBD5E1', borderRadius: '6px', background: 'none', cursor: 'pointer' }}>
         ← Back
       </button>
-      <h2>Your Learning History</h2>
+      <h2 className='text-xl font-bold mb-4 text-center' >Your Learning History</h2>
 
       {!selectedDoc && (
         <div style={{ display: 'grid', gap: '12px' }}>

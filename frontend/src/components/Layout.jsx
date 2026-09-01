@@ -11,6 +11,7 @@ export default function Layout({ children }) {
         <Hero />
         {children}
       </div>
+      
     </div>
   );
 }

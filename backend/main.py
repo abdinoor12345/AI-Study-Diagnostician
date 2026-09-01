@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 
 from supabase_client import insert, select, update
 
+
 load_dotenv()
 
 app = Flask(__name__)
@@ -63,16 +64,17 @@ def extract_concepts():
 
         concepts_data = json.loads(response.text)
 
-        # 3. Save Document entry in Supabase
-        doc_res = insert("documents", [{"file_path": file.filename}])
-        doc_id = doc_res[0]["id"]  # uuid
+        # 3. Save Document entry in Supabase (now scoped to device_id)
+        device_id = request.form.get("device_id")
+        doc_res = insert("documents", [{"file_path": file.filename, "device_id": device_id}])
+        doc_id = doc_res[0]["id"]  # <-- this line must be present
 
         # 4. Save Concepts in Supabase
         concepts_to_insert = [
             {"document_id": doc_id, "name": c["name"], "description": c["description"]}
             for c in concepts_data["concepts"]
         ]
-        saved_concepts = insert("concepts", concepts_to_insert)  # each row includes its uuid id + mastery_score default 0.0
+        saved_concepts = insert("concepts", concepts_to_insert)
 
         return jsonify({
             "document_id": doc_id,
@@ -207,6 +209,7 @@ def submit_quiz():
 
 
 # MVP Steps 5 & 6: Diagnostician Engine ("Why are you struggling?")
+# MVP Steps 5 & 6: Diagnostician Engine ("Why are you struggling?")
 @app.route("/diagnose-weakness", methods=["POST"])
 def diagnose_weakness():
     data = request.get_json()
@@ -241,18 +244,20 @@ def diagnose_weakness():
     except Exception as e:
         app.logger.exception("diagnose-weakness failed")
         return jsonify({"error": str(e)}), 500
-
-
+    
 # Retrieval
 @app.route("/documents", methods=["GET"])
 def list_documents():
+    device_id = request.args.get("device_id")
     try:
-        docs = select("documents", {"select": "*", "order": "created_at.desc"})
+        params = {"select": "*", "order": "created_at.desc"}
+        if device_id:
+            params["device_id"] = f"eq.{device_id}"
+        docs = select("documents", params)
         return jsonify(docs)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-
+    
 @app.route("/documents/<document_id>/history", methods=["GET"])
 def document_history(document_id):
     try:

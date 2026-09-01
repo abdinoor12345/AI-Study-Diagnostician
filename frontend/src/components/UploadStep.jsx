@@ -1,7 +1,9 @@
 import React from 'react';
+import HowItWorks from './HowItWorks';
 
 export default function UploadStep({ onFileUpload }) {
   return (
+    <div>
     <div className="flex flex-col items-center justify-center p-10 border-2 border-dashed border-slate-300 rounded-2xl bg-slate-50/50 hover:bg-slate-50 hover:border-indigo-400 transition-colors duration-200 text-center group">
       {/* Upload Icon */}
       <div className="p-4 mb-4 rounded-full bg-indigo-50 text-indigo-600 group-hover:scale-110 transition-transform duration-200">
@@ -40,5 +42,8 @@ export default function UploadStep({ onFileUpload }) {
         />
       </label>
     </div>
+    <HowItWorks/>
+    </div>
+    
   );
 }
